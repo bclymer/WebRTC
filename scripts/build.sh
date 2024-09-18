@@ -3,7 +3,7 @@
 ## WebRTC library build script
 ## Created by Stasel
 ## BSD-3 License
-## 
+##
 ## Example usage: MACOS=true IOS=true BUILD_VP9=true sh build.sh
 
 # Configs
@@ -16,7 +16,7 @@ MAC_CATALYST="${MAC_CATALYST:-false}"
 
 OUTPUT_DIR="./out"
 XCFRAMEWORK_DIR="out/WebRTC.xcframework"
-COMMON_GN_ARGS="is_debug=${DEBUG} rtc_libvpx_build_vp9=${BUILD_VP9} is_component_build=false rtc_include_tests=false rtc_enable_objc_symbol_export=true enable_stripping=true enable_dsyms=false use_lld=true rtc_ios_use_opengl_rendering=true"
+COMMON_GN_ARGS="is_debug=${DEBUG} rtc_libvpx_build_vp9=${BUILD_VP9} is_component_build=false rtc_include_tests=false rtc_enable_objc_symbol_export=true enable_stripping=true enable_dsyms=true use_lld=true rtc_ios_use_opengl_rendering=true"
 PLISTBUDDY_EXEC="/usr/libexec/PlistBuddy"
 
 build_iOS() {
@@ -38,7 +38,7 @@ build_macOS() {
     ninja -C "${gen_dir}" mac_framework_objc || exit 1
 }
 
-# Catalyst builds are not working properly yet. 
+# Catalyst builds are not working properly yet.
 # See: https://groups.google.com/g/discuss-webrtc/c/VZXS4V4mSY4
 build_catalyst() {
     local arch=$1
@@ -92,7 +92,7 @@ gclient sync --with_branch_heads --with_tags
 cd src
 
 # Step 3 - Compile and build all frameworks
-rm -rf $OUTPUT_DIR  
+rm -rf $OUTPUT_DIR
 
 if [ "$IOS" = true ]; then
     build_iOS "x64" "simulator"
@@ -150,6 +150,21 @@ if [[ "$IOS" = true ]]; then
     lipo -create -output  "${XCFRAMEWORK_DIR}/${IOS_LIB_IDENTIFIER}/WebRTC.framework/WebRTC" ${LIPO_IOS_FLAGS}
     lipo -create -output "${XCFRAMEWORK_DIR}/${IOS_SIM_LIB_IDENTIFIER}/WebRTC.framework/WebRTC" ${LIPO_IOS_SIM_FLAGS}
 
+    # Combine dSYM files for the device and simulator
+    # Create directories for dSYM
+    mkdir -p "${XCFRAMEWORK_DIR}/${IOS_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM"
+    mkdir -p "${XCFRAMEWORK_DIR}/${IOS_SIM_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM"
+
+    # Combine the dSYM files using lipo
+    cp -r out/ios-arm64-device/WebRTC.dSYM "${XCFRAMEWORK_DIR}/${IOS_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM"
+    lipo -create -output "${XCFRAMEWORK_DIR}/${IOS_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC" \
+        out/ios-arm64-device/WebRTC.dSYM/Contents/Resources/DWARF/WebRTC
+
+    cp -r out/ios-x64-simulator/WebRTC.dSYM "${XCFRAMEWORK_DIR}/${IOS_SIM_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM"
+    lipo -create -output "${XCFRAMEWORK_DIR}/${IOS_SIM_LIB_IDENTIFIER}/dSYMs/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC" \
+        out/ios-x64-simulator/WebRTC.dSYM/Contents/Resources/DWARF/WebRTC \
+        out/ios-arm64-simulator/WebRTC.dSYM/Contents/Resources/DWARF/WebRTC
+
     # codesign simulator framework for local development.
     # This makes it possible for Swift Packages to run Unit Tests and show SwiftUI Previews.
     xcrun codesign -s - "${XCFRAMEWORK_DIR}/${IOS_SIM_LIB_IDENTIFIER}/WebRTC.framework/WebRTC"
@@ -202,4 +217,3 @@ COMMIT_HASH=$(git rev-parse HEAD)
 
 echo "{ \"file\": \"${OUTPUT_NAME}\", \"checksum\": \"${CHECKSUM}\", \"commit\": \"${COMMIT_HASH}\", \"branch\": \"${BRANCH}\" }" > metadata.json
 cat metadata.json
-
